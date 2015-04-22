@@ -1,6 +1,6 @@
-/**! hopscotch - v0.2.3
+/**! hopscotch - v0.3.0
 *
-* Copyright 2014 LinkedIn Corp. All rights reserved.
+* Copyright 2015 LinkedIn Corp. All rights reserved.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,7 +14,25 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-(function(context, namespace) {
+(function(context, factory) {
+  'use strict';
+
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module.
+    define([], factory);
+  } else if (typeof exports === 'object') {
+    // Node/CommonJS
+    module.exports = factory();
+  } else {
+    var namespace = 'hopscotch';
+    // Browser globals
+    if (context[namespace]) {
+      // Hopscotch already exists.
+      return;
+    }
+    context[namespace] = factory();
+  }
+}(this, (function() {
   var Hopscotch,
       HopscotchBubble,
       HopscotchCalloutManager,
@@ -29,14 +47,15 @@
       helpers,
       winLoadHandler,
       defaultOpts,
-      winHopscotch      = context[namespace],
+      winHopscotch,
       undefinedStr      = 'undefined',
       waitingToStart    = false, // is a tour waiting for the document to finish
                                  // loading so that it can start?
-      hasJquery         = (typeof window.jQuery !== undefinedStr),
+      hasJquery         = (typeof jQuery !== undefinedStr),
       hasSessionStorage = false,
       isStorageWritable = false,
       document          = window.document,
+      validIdRegEx      = /^[a-zA-Z]+[a-zA-Z0-9_-]*$/,
       rtlMatches        = {
         left: 'right',
         right: 'left'
@@ -68,11 +87,6 @@
     isRtl:           false,
     cookieName:      'hopscotch.tour.state'
   };
-
-  if (winHopscotch) {
-    // Hopscotch already exists.
-    return;
-  }
 
   if (!Array.isArray) {
     Array.isArray = function(obj) {
@@ -299,13 +313,6 @@
      */
     getWindowHeight: function() {
       return window.innerHeight || document.documentElement.clientHeight;
-    },
-
-    /**
-     * @private
-     */
-    getWindowWidth: function() {
-      return window.innerWidth || document.documentElement.clientWidth;
     },
 
     /**
@@ -653,7 +660,7 @@
         left = boundingRect.right + this.opt.arrowWidth;
       }
       else {
-        throw 'Bubble placement failed because step.placement is invalid or undefined!';
+        throw new Error('Bubble placement failed because step.placement is invalid or undefined!');
       }
 
       // SET (OR RESET) ARROW OFFSETS
@@ -777,6 +784,20 @@
 
       this.placement = step.placement;
 
+      function isFirstVisibleStep() {
+        if (idx === 0) {
+          return true;
+        }
+
+        var skippedStepsIndexes = winHopscotch.getSkippedStepsIndexes();
+        for (var i = 0; i < idx; i++) {
+          if (skippedStepsIndexes[i] !== i.toString()) {
+            return false;
+          }
+        }
+        return true;
+      }
+
       // Setup the configuration options we want to pass along to the template
       opts = {
         i18n: {
@@ -786,7 +807,7 @@
           stepNum: this._getStepI18nNum(this._getStepNum(idx))
         },
         buttons:{
-          showPrev: (utils.valOrDefault(step.showPrevButton, this.opt.showPrevButton) && (idx > 0)),
+          showPrev: utils.valOrDefault(step.showPrevButton, this.opt.showPrevButton) && !isFirstVisibleStep(),
           showNext: utils.valOrDefault(step.showNextButton, this.opt.showNextButton),
           showCTA: utils.valOrDefault((step.showCTAButton && step.ctaLabel), false),
           ctaLabel: step.ctaLabel,
@@ -817,19 +838,19 @@
         el.innerHTML = tourSpecificRenderer(opts);
       }
       else if(typeof tourSpecificRenderer === 'string'){
-        if(!hopscotch.templates || (typeof hopscotch.templates[tourSpecificRenderer] !== 'function')){
-          throw 'Bubble rendering failed - template "' + tourSpecificRenderer + '" is not a function.';
+        if(!winHopscotch.templates || (typeof winHopscotch.templates[tourSpecificRenderer] !== 'function')){
+          throw new Error('Bubble rendering failed - template "' + tourSpecificRenderer + '" is not a function.');
         }
-        el.innerHTML = hopscotch.templates[tourSpecificRenderer](opts);
+        el.innerHTML = winHopscotch.templates[tourSpecificRenderer](opts);
       }
       else if(customRenderer){
         el.innerHTML = customRenderer(opts);
       }
       else{
-        if(!hopscotch.templates || (typeof hopscotch.templates[templateToUse] !== 'function')){
-          throw 'Bubble rendering failed - template "' + templateToUse + '" is not a function.';
+        if(!winHopscotch.templates || (typeof winHopscotch.templates[templateToUse] !== 'function')){
+          throw new Error('Bubble rendering failed - template "' + templateToUse + '" is not a function.');
         }
-        el.innerHTML = hopscotch.templates[templateToUse](opts);
+        el.innerHTML = winHopscotch.templates[templateToUse](opts);
       }
 
       // Find arrow among new child elements.
@@ -900,22 +921,22 @@
      *
      * @private
      */
-    _setArrow: function(orientation) {
+    _setArrow: function(placement) {
       utils.removeClass(this.arrowEl, 'down up right left');
 
       // Whatever the orientation is, we want to arrow to appear
       // "opposite" of the orientation. E.g., a top orientation
       // requires a bottom arrow.
-      if (orientation === 'top') {
+      if (placement === 'top') {
         utils.addClass(this.arrowEl, 'down');
       }
-      else if (orientation === 'bottom') {
+      else if (placement === 'bottom') {
         utils.addClass(this.arrowEl, 'up');
       }
-      else if (orientation === 'left') {
+      else if (placement === 'left') {
         utils.addClass(this.arrowEl, 'right');
       }
-      else if (orientation === 'right') {
+      else if (placement === 'right') {
         utils.addClass(this.arrowEl, 'left');
       }
     },
@@ -1186,8 +1207,11 @@
       var callout;
 
       if (opt.id) {
+        if(!validIdRegEx.test(opt.id)) {
+          throw new Error('Callout ID is using an invalid format. Use alphanumeric, underscores, and/or hyphens only. First character must be a letter.');
+        }
         if (callouts[opt.id]) {
-          throw 'Callout by that id already exists. Please choose a unique id.';
+          throw new Error('Callout by that id already exists. Please choose a unique id.');
         }
         opt.showNextButton = opt.showPrevButton = false;
         opt.isTourBubble = false;
@@ -1204,7 +1228,7 @@
         }
       }
       else {
-        throw 'Must specify a callout id.';
+        throw new Error('Must specify a callout id.');
       }
       return callout;
     };
@@ -1829,6 +1853,11 @@
           skippedSteps = {},
           self = this;
 
+      // Check validity of tour ID. If invalid, throw an error.
+      if(!tour.id || !validIdRegEx.test(tour.id)) {
+        throw new Error('Tour ID is using an invalid format. Use alphanumeric, underscores, and/or hyphens only. First character must be a letter.');
+      }
+
       // loadTour if we are calling startTour directly. (When we call startTour
       // from window onLoad handler, we'll use currTour)
       if (!currTour) {
@@ -1838,9 +1867,14 @@
 
       if (typeof stepNum !== undefinedStr) {
         if (stepNum >= currTour.steps.length) {
-          throw 'Specified step number out of bounds.';
+          throw new Error('Specified step number out of bounds.');
         }
         currStepNum = stepNum;
+
+        // Add previous steps to skipped steps so you can't step backwards into them
+        for(var s = 0; s < stepNum; s++) {
+          skippedSteps[s] = s;
+        }
       }
 
       // If document isn't ready, wait for it to finish loading.
@@ -2385,7 +2419,6 @@
   };
 
   winHopscotch = new Hopscotch();
-  context[namespace] = winHopscotch;
 
 // Template includes, placed inside a closure to ensure we don't
 // end up declaring our shim globally.
@@ -2407,10 +2440,9 @@ _.escape = function(str){
     if(match == "'"){ return '&#x27;' }
   });
 }
-this["hopscotch"] = this["hopscotch"] || {};
-this["hopscotch"]["templates"] = this["hopscotch"]["templates"] || {};
+this["templates"] = this["templates"] || {};
 
-this["hopscotch"]["templates"]["bubble_default"] = function(obj) {
+this["templates"]["bubble_default"] = function(obj) {
 obj || (obj = {});
 var __t, __p = '', __e = _.escape, __j = Array.prototype.join;
 function print() { __p += __j.call(arguments, '') }
@@ -2424,47 +2456,47 @@ with (obj) {
     return str;
   }
 ;
-__p += '\n<div class="hopscotch-bubble-container" style="width: ' +
+__p += '\r\n<div class="hopscotch-bubble-container" style="width: ' +
 ((__t = ( step.width )) == null ? '' : __t) +
 'px; padding: ' +
 ((__t = ( step.padding )) == null ? '' : __t) +
-'px;">\n  ';
+'px;">\r\n  ';
  if(tour.isTour){ ;
 __p += '<span class="hopscotch-bubble-number">' +
 ((__t = ( i18n.stepNum )) == null ? '' : __t) +
 '</span>';
  } ;
-__p += '\n  <div class="hopscotch-bubble-content">\n    ';
+__p += '\r\n  <div class="hopscotch-bubble-content">\r\n    ';
  if(step.title !== ''){ ;
 __p += '<h3 class="hopscotch-title">' +
 ((__t = ( optEscape(step.title, tour.unsafe) )) == null ? '' : __t) +
 '</h3>';
  } ;
-__p += '\n    ';
+__p += '\r\n    ';
  if(step.content  !== ''){ ;
 __p += '<div class="hopscotch-content">' +
 ((__t = ( optEscape(step.content, tour.unsafe) )) == null ? '' : __t) +
 '</div>';
  } ;
-__p += '\n  </div>\n  <div class="hopscotch-actions">\n    ';
+__p += '\r\n  </div>\r\n  <div class="hopscotch-actions">\r\n    ';
  if(buttons.showPrev){ ;
 __p += '<button class="hopscotch-nav-button prev hopscotch-prev">' +
 ((__t = ( i18n.prevBtn )) == null ? '' : __t) +
 '</button>';
  } ;
-__p += '\n    ';
+__p += '\r\n    ';
  if(buttons.showCTA){ ;
 __p += '<button class="hopscotch-nav-button next hopscotch-cta">' +
 ((__t = ( buttons.ctaLabel )) == null ? '' : __t) +
 '</button>';
  } ;
-__p += '\n    ';
+__p += '\r\n    ';
  if(buttons.showNext){ ;
 __p += '<button class="hopscotch-nav-button next hopscotch-next">' +
 ((__t = ( i18n.nextBtn )) == null ? '' : __t) +
 '</button>';
  } ;
-__p += '\n  </div>\n  ';
+__p += '\r\n  </div>\r\n  ';
  if(buttons.showClose){ ;
 __p += '<a title="' +
 ((__t = ( i18n.closeTooltip )) == null ? '' : __t) +
@@ -2472,11 +2504,13 @@ __p += '<a title="' +
 ((__t = ( i18n.closeTooltip )) == null ? '' : __t) +
 '</a>';
  } ;
-__p += '\n</div>\n<div class="hopscotch-bubble-arrow-container hopscotch-arrow">\n  <div class="hopscotch-bubble-arrow-border"></div>\n  <div class="hopscotch-bubble-arrow"></div>\n</div>';
+__p += '\r\n</div>\r\n<div class="hopscotch-bubble-arrow-container hopscotch-arrow">\r\n  <div class="hopscotch-bubble-arrow-border"></div>\r\n  <div class="hopscotch-bubble-arrow"></div>\r\n</div>';
 
 }
 return __p
 };
-}());
+}.call(winHopscotch));
 
-}(window, 'hopscotch'));
+  return winHopscotch;
+
+})));
