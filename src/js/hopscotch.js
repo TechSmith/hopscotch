@@ -768,6 +768,20 @@
 
       this.placement = step.placement;
 
+      function isFirstVisibleStep() {
+        if (idx === 0) {
+          return true;
+        }
+
+        var skippedStepsIndexes = winHopscotch.getSkippedStepsIndexes();
+        for (var i = 0; i < idx; i++) {
+          if (skippedStepsIndexes[i] !== i.toString()) {
+            return false;
+          }
+        }
+        return true;
+      }
+
       // Setup the configuration options we want to pass along to the template
       opts = {
         i18n: {
@@ -777,7 +791,7 @@
           stepNum: this._getStepI18nNum(this._getStepNum(idx))
         },
         buttons:{
-          showPrev: (utils.valOrDefault(step.showPrevButton, this.opt.showPrevButton) && (idx > 0)),
+          showPrev: utils.valOrDefault(step.showPrevButton, this.opt.showPrevButton) && !isFirstVisibleStep(),
           showNext: utils.valOrDefault(step.showNextButton, this.opt.showNextButton),
           showCTA: utils.valOrDefault((step.showCTAButton && step.ctaLabel), false),
           ctaLabel: step.ctaLabel,
@@ -1840,6 +1854,11 @@
           throw new Error('Specified step number out of bounds.');
         }
         currStepNum = stepNum;
+
+        // Add previous steps to skipped steps so you can't step backwards into them
+        for(var s = 0; s < stepNum; s++) {
+          skippedSteps[s] = s;
+        }
       }
 
       // If document isn't ready, wait for it to finish loading.

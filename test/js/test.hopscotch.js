@@ -450,7 +450,10 @@ describe('Hopscotch', function() {
             content: 'It\'s a shopping list'
           }
         ]
-      }, 1);
+      });
+      $el = $('.hopscotch-prev');
+      expect($el.length).toBe(0);
+      hopscotch.nextStep();
       $el = $('.hopscotch-prev');
       expect($el.length).toBe(1);
       hopscotch.endTour();
@@ -465,6 +468,74 @@ describe('Hopscotch', function() {
       hopscotch.startTour({
         id: 'hopscotch-test-tour',
         steps: [
+          {
+            target: 'shopping-list',
+            placement: 'left',
+            title: 'Shopping List',
+            content: 'It\'s a shopping list'
+          },
+          {
+            target: 'shopping-list',
+            placement: 'left',
+            title: 'Shopping List',
+            content: 'It\'s a shopping list'
+          }
+        ]
+      });
+      $el = $('.hopscotch-prev');
+      expect($el.length).toBe(0);
+      hopscotch.endTour();
+    });
+
+    it('should hide the Previous button on the second step when a tour is started on the second step, even if showPrevButton is specified', function() {
+      var $el;
+
+      hopscotch.configure({
+        showPrevButton: true
+      });
+      hopscotch.startTour({
+        id: 'hopscotch-test-tour',
+        steps: [
+          {
+            target: 'shopping-list',
+            placement: 'left',
+            title: 'Shopping List',
+            content: 'It\'s a shopping list'
+          },
+          {
+            target: 'shopping-list',
+            placement: 'left',
+            title: 'Shopping List',
+            content: 'It\'s a shopping list'
+          },
+          {
+            target: 'shopping-list',
+            placement: 'left',
+            title: 'Shopping List',
+            content: 'It\'s a shopping list'
+          }
+        ]
+      },2);
+      $el = $('.hopscotch-prev');
+      expect($el.length).toBe(0);
+      hopscotch.endTour();
+    });
+
+    it('should hide the Previous button on the second step when the first step target is invalid, even if showPrevButton is specified', function() {
+      var $el;
+
+      hopscotch.configure({
+        showPrevButton: true
+      });
+      hopscotch.startTour({
+        id: 'hopscotch-test-tour',
+        steps: [
+          {
+            target: 'invalid',
+            placement: 'left',
+            title: 'Shopping List',
+            content: 'It\'s a shopping list'
+          },
           {
             target: 'shopping-list',
             placement: 'left',
